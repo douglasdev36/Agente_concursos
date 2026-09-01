@@ -6,3 +6,38 @@ __pycache__/
 !.env.example
 .pytest_cache/
 uploads/
+*.pyo
+*.pyd
+
+# Python build/cache
+.Python
+build/
+dist/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+
+# Local data / runtime
+backend/users.json
+*.db
+*.sqlite
+*.sqlite3
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# Logs and debug artifacts
+*.log
+.dbg/
+debug-*.md
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
