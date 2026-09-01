@@ -32,8 +32,7 @@ export default function App() {
 
   return (
     <div className="container">
-      <h1 className="title">ConcursoAI</h1>
-      <div className="muted">Frontend React (Vercel) + API Python (Render)</div>
+      <h1 className="title">Concursos BDC</h1>
 
       <div className="nav">
         <Link to="/config">Configuração</Link>
