@@ -1,0 +1,6 @@
+{
+  "dodo.merc@gmail.com": {
+    "password_hash": "$pbkdf2-sha256$29000$bG3NmVPK2bt3rvXe25tTSg$HmrXRDxO/ESth5OkTgVq2ga0HExCglwgkj.n.xAdT9Y",
+    "is_admin": true
+  }
+}
