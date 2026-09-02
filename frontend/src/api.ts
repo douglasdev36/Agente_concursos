@@ -2,6 +2,29 @@ import { clearState, clearToken, loadToken, saveToken } from "./storage";
 import type { AnaliseBanca, AnaliseProva, Edital, ListaQuestoes } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const DEBUG_SESSION_ID = "render-cors-502";
+const DEBUG_LS_KEY = "concursoai_debug_server_url";
+
+function debugReport(hypothesisId: string, msg: string, data?: any) {
+  // #region debug-point A:client-report
+  try {
+    const url = localStorage.getItem(DEBUG_LS_KEY);
+    if (!url) return;
+    fetch(url, {
+      method: "POST",
+      body: JSON.stringify({
+        sessionId: DEBUG_SESSION_ID,
+        runId: "pre-fix",
+        hypothesisId,
+        location: "frontend/src/api.ts",
+        msg: `[DEBUG] ${msg}`,
+        data: data ?? {},
+        ts: Date.now()
+      })
+    }).catch(() => {});
+  } catch {}
+  // #endregion
+}
 
 function getErrorMessage(raw: string, status: number) {
   try {
@@ -23,7 +46,20 @@ async function apiFetch(path: string, init?: RequestInit) {
   headers.set("Accept", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const res = await fetch(`${API_URL}${path}`, { ...init, headers });
+  const url = `${API_URL}${path}`;
+  let res: Response;
+  try {
+    res = await fetch(url, { ...init, headers });
+  } catch (err: any) {
+    debugReport("A", "fetch-failed", {
+      url,
+      method: init?.method,
+      message: String(err?.message || err),
+      name: String(err?.name || ""),
+      origin: window.location.origin
+    });
+    throw err;
+  }
   if (!res.ok) {
     if (res.status === 401) {
       clearToken();
@@ -32,19 +68,46 @@ async function apiFetch(path: string, init?: RequestInit) {
       throw new Error("Sessão expirada. Faça login novamente.");
     }
     const raw = await res.text();
+    debugReport("B", "api-error", {
+      url,
+      method: init?.method,
+      status: res.status,
+      statusText: res.statusText,
+      body: raw.slice(0, 2000)
+    });
     throw new Error(getErrorMessage(raw, res.status));
   }
   return res;
 }
 
 export async function login(email: string, password: string) {
-  const res = await fetch(`${API_URL}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({ email, password })
-  });
+  const url = `${API_URL}/auth/login`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+  } catch (err: any) {
+    debugReport("A", "login-fetch-failed", {
+      url,
+      method: "POST",
+      message: String(err?.message || err),
+      name: String(err?.name || ""),
+      origin: window.location.origin
+    });
+    throw err;
+  }
   if (!res.ok) {
     const raw = await res.text();
+    debugReport("B", "login-error", {
+      url,
+      method: "POST",
+      status: res.status,
+      statusText: res.statusText,
+      body: raw.slice(0, 2000)
+    });
     throw new Error(getErrorMessage(raw, res.status));
   }
   const data = (await res.json()) as { access_token: string };
