@@ -51,6 +51,20 @@ def _construir_contexto_edital(edital: Optional[Edital], materia: str, assunto: 
     return f"Matéria: {materia}\nAssunto: {assunto}"
 
 
+def _construir_contexto_questoes_exemplo(questoes_exemplo: Optional[str]) -> str:
+    if not questoes_exemplo or not str(questoes_exemplo).strip():
+        return ""
+    texto = str(questoes_exemplo).strip()
+    if len(texto) > 6000:
+        texto = texto[:6000]
+    return (
+        "=== QUESTÕES EXEMPLO (APENAS PARA ESTILO) ===\n"
+        f"{texto}\n\n"
+        "Use as questões acima somente para imitar estilo, tom, estrutura e pegadinhas. "
+        "NÃO copie conteúdo, números, textos ou alternativas. Gere questões inéditas.\n"
+    )
+
+
 def get_questoes_agent(
     analise_banca: Optional[AnaliseBanca] = None,
     analise_prova: Optional[AnaliseProva] = None,
@@ -106,6 +120,7 @@ def gerar_questoes(
     incluir_texto_base: bool = False,
     modo_texto_base: Optional[str] = None,
     texto_base_fornecido: Optional[str] = None,
+    questoes_exemplo: Optional[str] = None,
     analise_banca: Optional[AnaliseBanca] = None,
     analise_prova: Optional[AnaliseProva] = None,
     edital: Optional[Edital] = None,
@@ -127,6 +142,7 @@ def gerar_questoes(
         ListaQuestoes: objeto Pydantic contendo as questões geradas
     """
     contexto_edital = _construir_contexto_edital(edital, materia, assunto)
+    contexto_exemplos = _construir_contexto_questoes_exemplo(questoes_exemplo)
 
     instr_nivel_ensino = ""
     if nivel_ensino:
@@ -159,6 +175,7 @@ def gerar_questoes(
         f"Gere exatamente {quantidade} questão(ões) de múltipla escolha com {num_alternativas} alternativas.\n"
         f"Dificuldade solicitada: {dificuldade}\n\n"
         f"=== CONTEÚDO AUTORIZADO DO EDITAL ===\n{contexto_edital}\n\n"
+        f"{contexto_exemplos}\n"
         f"{instr_nivel_ensino}\n"
         f"{instr_texto_base}\n"
         f"IMPORTANTE: As questões devem cobrir APENAS o conteúdo especificado acima. "
@@ -176,11 +193,13 @@ def gerar_questoes_com_imagens(
     imagens: Sequence[Tuple[bytes, str]],
     dificuldade: str,
     num_alternativas: int = 5,
+    questoes_exemplo: Optional[str] = None,
     analise_banca: Optional[AnaliseBanca] = None,
     analise_prova: Optional[AnaliseProva] = None,
     edital: Optional[Edital] = None,
 ) -> ListaQuestoes:
     contexto_edital = _construir_contexto_edital(edital, materia, assunto)
+    contexto_exemplos = _construir_contexto_questoes_exemplo(questoes_exemplo)
     agent = get_questoes_agent(analise_banca, analise_prova, edital)
 
     questoes = []
@@ -189,6 +208,7 @@ def gerar_questoes_com_imagens(
             f"Gere exatamente 1 questão(ão) de múltipla escolha com {num_alternativas} alternativas.\n"
             f"Dificuldade solicitada: {dificuldade}\n\n"
             f"=== CONTEÚDO AUTORIZADO DO EDITAL ===\n{contexto_edital}\n\n"
+            f"{contexto_exemplos}\n"
             "A IMAGEM ANEXADA contém um diagrama/figura que deve ser usada como base da questão.\n"
             "- Crie um enunciado que dependa diretamente da interpretação do diagrama.\n"
             "- Priorize casos típicos de Engenharia/Automação: diagrama unifilar, esquema de comando/potência, ladder, diagrama de blocos, instrumentação e P&ID, desenhos técnicos com cotas e vistas.\n"
@@ -248,15 +268,18 @@ def completar_questao(
     materia: str,
     assunto: str,
     num_alternativas: int = 5,
+    questoes_exemplo: Optional[str] = None,
     analise_banca: Optional[AnaliseBanca] = None,
     analise_prova: Optional[AnaliseProva] = None,
 ) -> ListaQuestoes:
     """
     Gera alternativas para um enunciado fornecido pelo usuário.
     """
+    contexto_exemplos = _construir_contexto_questoes_exemplo(questoes_exemplo)
     prompt = (
         f"Matéria: {materia}\n"
         f"Assunto: {assunto}\n\n"
+        f"{contexto_exemplos}\n"
         f"Gere exatamente {num_alternativas} alternativas (A até {'E' if num_alternativas == 5 else 'D'}) para o seguinte enunciado:\n\n"
         f"=== ENUNCIADO FORNECIDO ===\n{enunciado}\n=========================\n\n"
         f"Lembre-se de retornar uma lista contendo exatamente 1 (uma) Questao, onde o campo 'enunciado' é o próprio enunciado formatado."

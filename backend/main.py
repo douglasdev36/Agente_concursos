@@ -63,6 +63,7 @@ class GenerateQuestionsRequest(BaseModel):
     incluir_texto_base: bool = False
     modo_texto_base: Optional[str] = None
     texto_base_fornecido: Optional[str] = None
+    questoes_exemplo: Optional[str] = None
     analise_banca: Optional[AnaliseBanca] = None
     analise_prova: Optional[AnaliseProva] = None
     edital: Optional[Edital] = None
@@ -73,6 +74,7 @@ class CompleteQuestionRequest(BaseModel):
     materia: str
     assunto: str
     num_alternativas: int = 5
+    questoes_exemplo: Optional[str] = None
     analise_banca: Optional[AnaliseBanca] = None
     analise_prova: Optional[AnaliseProva] = None
 
@@ -488,6 +490,7 @@ def generate_questions(body: GenerateQuestionsRequest, _: dict = Depends(_requir
         incluir_texto_base=body.incluir_texto_base,
         modo_texto_base=body.modo_texto_base,
         texto_base_fornecido=body.texto_base_fornecido,
+        questoes_exemplo=body.questoes_exemplo,
         analise_banca=body.analise_banca,
         analise_prova=body.analise_prova,
         edital=body.edital,
@@ -500,6 +503,7 @@ async def generate_questions_with_images(
     assunto: str = Form(...),
     dificuldade: str = Form(...),
     num_alternativas: int = Form(5),
+    questoes_exemplo: Optional[str] = Form(default=None),
     analise_banca_json: Optional[str] = Form(default=None),
     analise_prova_json: Optional[str] = Form(default=None),
     edital_json: Optional[str] = Form(default=None),
@@ -529,6 +533,7 @@ async def generate_questions_with_images(
         imagens=items,
         dificuldade=dificuldade,
         num_alternativas=num_alternativas,
+        questoes_exemplo=questoes_exemplo,
         analise_banca=analise_banca,
         analise_prova=analise_prova,
         edital=edital,
@@ -542,6 +547,7 @@ def complete_question(body: CompleteQuestionRequest, _: dict = Depends(_require_
         materia=body.materia,
         assunto=body.assunto,
         num_alternativas=body.num_alternativas,
+        questoes_exemplo=body.questoes_exemplo,
         analise_banca=body.analise_banca,
         analise_prova=body.analise_prova,
     )

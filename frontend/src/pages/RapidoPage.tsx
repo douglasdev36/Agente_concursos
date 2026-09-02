@@ -37,6 +37,7 @@ export default function RapidoPage() {
   const [modo, setModo] = useState<"gerar" | "completar">("gerar");
   const [materia, setMateria] = useState("");
   const [assunto, setAssunto] = useState("");
+  const [questoesExemplo, setQuestoesExemplo] = useState("");
   const [qtd, setQtd] = useState(5);
   const [nivel, setNivel] = useState<"Fundamental" | "Médio" | "Superior">("Superior");
   const [dificuldade, setDificuldade] = useState("Médio");
@@ -63,6 +64,7 @@ export default function RapidoPage() {
     setError(null);
     setLoading(true);
     try {
+      const questoes_exemplo = questoesExemplo.trim() ? questoesExemplo.trim() : null;
       if (usarImagens && qtdImagens > 0) {
         const imgs = imagens.slice(0, qtdImagens);
         const lista = await generateQuestionsWithImages({
@@ -70,6 +72,7 @@ export default function RapidoPage() {
           assunto,
           dificuldade,
           num_alternativas: alts,
+          questoes_exemplo,
           images: imgs
         });
 
@@ -92,6 +95,7 @@ export default function RapidoPage() {
           nivel_ensino: nivel,
           num_alternativas: alts,
           incluir_texto_base: false,
+          questoes_exemplo,
           analise_banca: null,
           analise_prova: null,
           edital: null
@@ -109,6 +113,7 @@ export default function RapidoPage() {
     setError(null);
     setLoading(true);
     try {
+      const questoes_exemplo = questoesExemplo.trim() ? questoesExemplo.trim() : null;
       const resultados = await Promise.all(
         enunciados.map((en) =>
           completeQuestion({
@@ -116,6 +121,7 @@ export default function RapidoPage() {
             materia,
             assunto,
             num_alternativas: alts,
+            questoes_exemplo,
             analise_banca: null,
             analise_prova: null
           })
@@ -166,6 +172,14 @@ export default function RapidoPage() {
       </div>
 
       <div className="hr" />
+
+      <label>Questões exemplo (opcional)</label>
+      <div className="muted">
+        Cole 1–2 questões reais (sem gabarito) para a IA imitar o “jeito” da banca (texto, pegadinhas, formato). O sistema não deve copiar o conteúdo,
+        só o estilo.
+      </div>
+      <textarea value={questoesExemplo} onChange={(e) => setQuestoesExemplo(e.target.value)} />
+      <div style={{ height: 10 }} />
 
       <div className="row">
         <div className="col">

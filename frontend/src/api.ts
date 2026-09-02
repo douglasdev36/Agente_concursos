@@ -153,6 +153,7 @@ export async function generateQuestionsWithImages(params: {
   assunto: string;
   dificuldade: string;
   num_alternativas: number;
+  questoes_exemplo?: string | null;
   images: File[];
   analise_banca?: AnaliseBanca | null;
   analise_prova?: AnaliseProva | null;
@@ -163,6 +164,7 @@ export async function generateQuestionsWithImages(params: {
   form.append("assunto", params.assunto);
   form.append("dificuldade", params.dificuldade);
   form.append("num_alternativas", String(params.num_alternativas));
+  if (params.questoes_exemplo) form.append("questoes_exemplo", params.questoes_exemplo);
   if (params.analise_banca) form.append("analise_banca_json", JSON.stringify(params.analise_banca));
   if (params.analise_prova) form.append("analise_prova_json", JSON.stringify(params.analise_prova));
   if (params.edital) form.append("edital_json", JSON.stringify(params.edital));
