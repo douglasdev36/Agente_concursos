@@ -245,8 +245,69 @@ def _normalize_prova_dict(data: dict) -> dict:
     return normalized
 
 
-def _fallback_from_text(text: str, model_cls: Any) -> Optional[Any]:
+def _normalize_edital_dict(data: Any, original_text: str = "") -> dict:
+    if isinstance(data, list):
+        materias_list = data
+    elif isinstance(data, dict):
+        materias_list = data.get("materias")
+        if not materias_list:
+            for k in ["disciplinas", "matérias", "conteudo", "conteudo_programatico", "itens", "programatico"]:
+                if k in data and isinstance(data[k], list) and data[k]:
+                    materias_list = data[k]
+                    break
+        if not materias_list:
+            materias_list = []
+    else:
+        materias_list = []
+
+    normalized_materias = []
+    for item in materias_list:
+        if isinstance(item, str):
+            normalized_materias.append({"nome": item, "assuntos": []})
+        elif isinstance(item, dict):
+            m = dict(item)
+            nome = m.get("nome") or m.get("disciplina") or m.get("materia") or m.get("titulo") or "Conteúdo Programático"
+            assuntos_raw = m.get("assuntos")
+            if not assuntos_raw:
+                for k in ["topicos", "conteudos", "itens", "temas", "subassuntos"]:
+                    if k in m and isinstance(m[k], list):
+                        assuntos_raw = m[k]
+                        break
+            assuntos_list = []
+            if isinstance(assuntos_raw, list):
+                for a in assuntos_raw:
+                    if isinstance(a, str):
+                        assuntos_list.append({"nome": a, "topicos": []})
+                    elif isinstance(a, dict):
+                        a_dict = dict(a)
+                        a_nome = a_dict.get("nome") or a_dict.get("assunto") or a_dict.get("titulo") or "Geral"
+                        topicos_raw = a_dict.get("topicos") or a_dict.get("subtopicos") or []
+                        topicos_list = [{"nome": t} if isinstance(t, str) else t for t in topicos_raw]
+                        assuntos_list.append({"nome": a_nome, "topicos": topicos_list})
+            normalized_materias.append({"nome": nome, "assuntos": assuntos_list})
+
+    # Se ainda estiver vazia mas tivermos o texto original, cria matéria com os tópicos identificados
+    if not normalized_materias and original_text:
+        lines = [l.strip() for l in original_text.splitlines() if l.strip()]
+        if lines:
+            assuntos_fallback = []
+            for line in lines:
+                parts = [p.strip() for p in re.split(r"[;\n]\s*(?=[0-9]+\.|\b[A-Z][a-z]+:)", line) if p.strip()]
+                for part in (parts or [line]):
+                    if len(part) > 3:
+                        assuntos_fallback.append({"nome": part[:100], "topicos": []})
+            normalized_materias.append({
+                "nome": "Conteúdo Geral do Edital",
+                "assuntos": assuntos_fallback[:25] if assuntos_fallback else [{"nome": lines[0][:80], "topicos": []}]
+            })
+
+    return {"materias": normalized_materias}
+
+
+def _fallback_from_text(text: str, model_cls: Any, original_text: str = "") -> Optional[Any]:
     lines = [l.strip().lstrip("-*•123456789. ") for l in text.splitlines() if l.strip()]
+    if model_cls == Edital:
+        return Edital.model_validate(_normalize_edital_dict({}, text or original_text))
     if model_cls == AnaliseBanca:
         first_desc = " ".join(lines[:3]) if lines else text[:300].strip()
         carac = [l for l in lines if len(l) > 8][:5]
@@ -267,16 +328,22 @@ def _fallback_from_text(text: str, model_cls: Any) -> Optional[Any]:
     return None
 
 
-def _coerce_agent_content(resp: Any, model_cls: Any, context: str) -> Any:
+def _coerce_agent_content(resp: Any, model_cls: Any, context: str, original_text: str = "") -> Any:
     content = getattr(resp, "content", None)
     if isinstance(content, model_cls):
+        if model_cls == Edital and not getattr(content, "materias", None) and original_text:
+            return Edital.model_validate(_normalize_edital_dict({}, original_text))
         return content
 
     if not content:
+        if model_cls == Edital and original_text:
+            return Edital.model_validate(_normalize_edital_dict({}, original_text))
         _raise_agent_http_error("Nenhum conteúdo retornado pela IA.", context)
 
     # 1. Direct dict
     if isinstance(content, dict):
+        if model_cls == Edital:
+            return Edital.model_validate(_normalize_edital_dict(content, original_text))
         try:
             return model_cls.model_validate(content)
         except Exception:
@@ -285,6 +352,9 @@ def _coerce_agent_content(resp: Any, model_cls: Any, context: str) -> Any:
             if model_cls == AnaliseProva:
                 return AnaliseProva.model_validate(_normalize_prova_dict(content))
 
+    if isinstance(content, list) and model_cls == Edital:
+        return Edital.model_validate(_normalize_edital_dict(content, original_text))
+
     # 2. String representation
     if isinstance(content, str):
         lower = content.lower()
@@ -292,23 +362,30 @@ def _coerce_agent_content(resp: Any, model_cls: Any, context: str) -> Any:
             _raise_agent_http_error(content, context)
 
         cleaned_json = _extract_json_block(content)
-        try:
-            return model_cls.model_validate_json(cleaned_json)
-        except Exception:
-            pass
+        if model_cls == Edital:
+            try:
+                parsed = json.loads(cleaned_json)
+                return Edital.model_validate(_normalize_edital_dict(parsed, original_text))
+            except Exception:
+                pass
+        else:
+            try:
+                return model_cls.model_validate_json(cleaned_json)
+            except Exception:
+                pass
 
-        try:
-            parsed = json.loads(cleaned_json)
-            if isinstance(parsed, dict):
-                if model_cls == AnaliseBanca:
-                    return AnaliseBanca.model_validate(_normalize_banca_dict(parsed))
-                if model_cls == AnaliseProva:
-                    return AnaliseProva.model_validate(_normalize_prova_dict(parsed))
-                return model_cls.model_validate(parsed)
-        except Exception:
-            pass
+            try:
+                parsed = json.loads(cleaned_json)
+                if isinstance(parsed, dict):
+                    if model_cls == AnaliseBanca:
+                        return AnaliseBanca.model_validate(_normalize_banca_dict(parsed))
+                    if model_cls == AnaliseProva:
+                        return AnaliseProva.model_validate(_normalize_prova_dict(parsed))
+                    return model_cls.model_validate(parsed)
+            except Exception:
+                pass
 
-        fallback = _fallback_from_text(content, model_cls)
+        fallback = _fallback_from_text(content, model_cls, original_text=original_text)
         if fallback:
             return fallback
 
@@ -540,7 +617,7 @@ async def analyze_edital(
     # #region debug-point C:analyze-edital-success
     _debug_report("C", "backend/main.py:analyze_edital:success", "[DEBUG] analyze-edital-success", {"has_content": bool(resp and getattr(resp, "content", None))})
     # #endregion
-    return _coerce_agent_content(resp, Edital, "análise do edital")
+    return _coerce_agent_content(resp, Edital, "análise do edital", original_text=conteudo)
 
 
 @app.post("/analyze/banca", response_model=AnaliseBanca)

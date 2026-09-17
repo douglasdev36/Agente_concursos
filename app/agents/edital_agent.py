@@ -11,10 +11,12 @@ def get_edital_agent() -> Agent:
         model=Gemini(id="gemini-3.6-flash"),
         description="Você é um especialista em análise de editais de concursos públicos.",
         instructions=[
-            "Seu objetivo é receber um texto bruto contendo o conteúdo programático de um edital e organizá-lo.",
-            "Extraia todas as matérias, seus respectivos assuntos e tópicos/subassuntos de forma hierárquica.",
-            "Ignore textos que não façam parte do conteúdo programático (como regras do concurso, horários, etc).",
-            "Mantenha os nomes originais dos assuntos conforme o edital fornecido."
+            "Seu objetivo é receber um texto de edital ou tópicos de conteúdo programático e organizá-lo no formato estruturado solicitado.",
+            "Extraia e agrupe todo o conteúdo na lista obrigatória 'materias'. Cada matéria deve conter 'nome' e a lista 'assuntos'.",
+            "Mesmo que o texto fornecido seja apenas um trecho ou não traga cabeçalhos formais de matéria (ex: venha apenas 'Estatística básica: ...' ou '8. Matemática financeira: ...'), deduza e crie a Matéria apropriada (ex: 'Matemática e Estatística', 'Conhecimentos Específicos').",
+            "NUNCA retorne a lista de matérias vazia se houver tópicos e conteúdos no texto fornecido.",
+            "Ignore textos administrativos que não façam parte do conteúdo programático (como prazos, horários, taxas).",
+            "Retorne apenas o JSON correspondente ao esquema, sem comentários externos."
         ],
         output_schema=Edital, # Força o agente a responder no formato Pydantic definido
         structured_outputs=True, # Garante que a saída seja um JSON válido e parseado
