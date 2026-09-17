@@ -1,0 +1,16 @@
+.git
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite
+*.sqlite3
+.dbg
+debug-*.md
+
+frontend/node_modules
+frontend/dist
+
+uploads

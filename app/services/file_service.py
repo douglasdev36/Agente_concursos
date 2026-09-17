@@ -8,12 +8,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def extrair_texto_pdf(arquivo_bytes: bytes) -> str:
+def extrair_texto_pdf(arquivo_bytes: bytes, max_paginas: int = None) -> str:
     """
     Extrai o texto de um arquivo PDF a partir dos seus bytes brutos.
 
     Args:
         arquivo_bytes: Conteúdo binário do arquivo PDF.
+        max_paginas: Número máximo de páginas a serem extraídas.
 
     Returns:
         Texto extraído como string. Retorna string vazia se falhar.
@@ -28,9 +29,14 @@ def extrair_texto_pdf(arquivo_bytes: bytes) -> str:
 
     with pdfplumber.open(io.BytesIO(arquivo_bytes)) as pdf:
         total_paginas = len(pdf.pages)
-        logger.info(f"Extraindo texto de PDF com {total_paginas} página(s)...")
+        if max_paginas:
+            paginas = pdf.pages[:max_paginas]
+            logger.info(f"Extraindo texto de PDF com {total_paginas} página(s), limitando a {len(paginas)}...")
+        else:
+            paginas = pdf.pages
+            logger.info(f"Extraindo texto de PDF com {total_paginas} página(s)...")
 
-        for i, pagina in enumerate(pdf.pages):
+        for i, pagina in enumerate(paginas):
             texto_pagina = pagina.extract_text()
             if texto_pagina:
                 texto_total.append(texto_pagina.strip())
@@ -40,13 +46,14 @@ def extrair_texto_pdf(arquivo_bytes: bytes) -> str:
     return texto_final
 
 
-def extrair_texto_arquivo(uploaded_file) -> str:
+def extrair_texto_arquivo(uploaded_file, max_paginas: int = None) -> str:
     """
-    Extrai texto de um arquivo enviado pelo Streamlit (st.file_uploader).
+    Extrai texto de um arquivo enviado pelo Streamlit (st.file_uploader) ou FastAPI.
     Detecta automaticamente o tipo do arquivo.
 
     Args:
-        uploaded_file: Objeto de arquivo do Streamlit (UploadedFile)
+        uploaded_file: Objeto de arquivo do Streamlit (UploadedFile) ou _UploadShim
+        max_paginas: Número máximo de páginas a serem lidas (para PDFs)
 
     Returns:
         Texto extraído como string.
@@ -58,7 +65,7 @@ def extrair_texto_arquivo(uploaded_file) -> str:
     conteudo = uploaded_file.read()
 
     if nome.endswith(".pdf"):
-        return extrair_texto_pdf(conteudo)
+        return extrair_texto_pdf(conteudo, max_paginas=max_paginas)
     elif nome.endswith(".txt"):
         return conteudo.decode("utf-8", errors="replace")
     else:

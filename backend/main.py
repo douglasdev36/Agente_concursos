@@ -166,22 +166,152 @@ def _raise_agent_http_error(raw: Any, context: str) -> None:
                 retry_pretty = retry_seconds
             retry_hint = f" Tente novamente em cerca de {retry_pretty}s."
         raise HTTPException(status_code=429, detail=f"Limite temporário da API Gemini atingido ao processar {context}.{retry_hint}")
-    raise HTTPException(status_code=502, detail=f"A IA retornou uma resposta inválida ao processar {context}.")
+    snippet = text[:150].strip() if text else ""
+    raise HTTPException(status_code=502, detail=f"A IA retornou uma resposta inválida ao processar {context}." + (f" Detalhes: {snippet}" if snippet else ""))
+
+
+def _extract_json_block(text: str) -> str:
+    cleaned = text.strip()
+    match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned, flags=re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    first_brace = cleaned.find("{")
+    last_brace = cleaned.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        return cleaned[first_brace:last_brace + 1].strip()
+    return cleaned
+
+
+def _normalize_banca_dict(data: dict) -> dict:
+    normalized = dict(data)
+    if not normalized.get("estilo_enunciados"):
+        normalized["estilo_enunciados"] = (
+            normalized.get("estilo")
+            or normalized.get("estilo_questoes")
+            or normalized.get("perfil")
+            or normalized.get("descricao")
+            or "Enunciados diretos e conceituais."
+        )
+    if not normalized.get("grau_dificuldade"):
+        normalized["grau_dificuldade"] = (
+            normalized.get("dificuldade")
+            or normalized.get("nivel")
+            or normalized.get("nivel_dificuldade")
+            or "Médio"
+        )
+    if not normalized.get("formato_questoes"):
+        normalized["formato_questoes"] = (
+            normalized.get("formato")
+            or normalized.get("tipo")
+            or normalized.get("tipo_questoes")
+            or "Múltipla escolha (A-E)"
+        )
+    if not normalized.get("caracteristicas_frequentes"):
+        carac = (
+            normalized.get("caracteristicas")
+            or normalized.get("pegadinhas")
+            or normalized.get("pontos_fortes")
+            or []
+        )
+        if isinstance(carac, str):
+            carac = [c.strip() for c in carac.split("\n") if c.strip()]
+        normalized["caracteristicas_frequentes"] = carac
+    return normalized
+
+
+def _normalize_prova_dict(data: dict) -> dict:
+    normalized = dict(data)
+    if not normalized.get("estrutura_questoes"):
+        normalized["estrutura_questoes"] = (
+            normalized.get("estrutura")
+            or normalized.get("estilo")
+            or "Questões contextualizadas."
+        )
+    if not normalized.get("linguagem"):
+        normalized["linguagem"] = (
+            normalized.get("tipo_linguagem")
+            or normalized.get("tom")
+            or "Técnica e objetiva."
+        )
+    if not normalized.get("tipos_raciocinio"):
+        raciocinios = (
+            normalized.get("raciocinio")
+            or normalized.get("tipos_de_raciocinio")
+            or []
+        )
+        if isinstance(raciocinios, str):
+            raciocinios = [r.strip() for r in raciocinios.split("\n") if r.strip()]
+        normalized["tipos_raciocinio"] = raciocinios
+    return normalized
+
+
+def _fallback_from_text(text: str, model_cls: Any) -> Optional[Any]:
+    lines = [l.strip().lstrip("-*•123456789. ") for l in text.splitlines() if l.strip()]
+    if model_cls == AnaliseBanca:
+        first_desc = " ".join(lines[:3]) if lines else text[:300].strip()
+        carac = [l for l in lines if len(l) > 8][:5]
+        return AnaliseBanca(
+            estilo_enunciados=first_desc or "Enunciados típicos da banca examinadora.",
+            grau_dificuldade="Médio",
+            formato_questoes="Múltipla escolha (A-E)",
+            caracteristicas_frequentes=carac or ["Cobrança de conceitos e regras consolidadas."]
+        )
+    if model_cls == AnaliseProva:
+        first_desc = " ".join(lines[:3]) if lines else text[:300].strip()
+        rac = [l for l in lines if len(l) > 8][:5]
+        return AnaliseProva(
+            estrutura_questoes=first_desc or "Questões estruturadas em enunciados e alternativas objetivas.",
+            linguagem="Técnica e direta",
+            tipos_raciocinio=rac or ["Interpretação e raciocínio lógico."]
+        )
+    return None
 
 
 def _coerce_agent_content(resp: Any, model_cls: Any, context: str) -> Any:
     content = getattr(resp, "content", None)
     if isinstance(content, model_cls):
         return content
-    try:
-        if isinstance(content, dict):
+
+    if not content:
+        _raise_agent_http_error("Nenhum conteúdo retornado pela IA.", context)
+
+    # 1. Direct dict
+    if isinstance(content, dict):
+        try:
             return model_cls.model_validate(content)
-        if isinstance(content, str):
-            return model_cls.model_validate_json(content)
-    except ValidationError:
-        _raise_agent_http_error(content, context)
-    except Exception:
-        _raise_agent_http_error(content, context)
+        except Exception:
+            if model_cls == AnaliseBanca:
+                return AnaliseBanca.model_validate(_normalize_banca_dict(content))
+            if model_cls == AnaliseProva:
+                return AnaliseProva.model_validate(_normalize_prova_dict(content))
+
+    # 2. String representation
+    if isinstance(content, str):
+        lower = content.lower()
+        if any(err_marker in lower for err_marker in ["resource_exhausted", "quota exceeded", "api key", "unauthorized", "rate limit"]):
+            _raise_agent_http_error(content, context)
+
+        cleaned_json = _extract_json_block(content)
+        try:
+            return model_cls.model_validate_json(cleaned_json)
+        except Exception:
+            pass
+
+        try:
+            parsed = json.loads(cleaned_json)
+            if isinstance(parsed, dict):
+                if model_cls == AnaliseBanca:
+                    return AnaliseBanca.model_validate(_normalize_banca_dict(parsed))
+                if model_cls == AnaliseProva:
+                    return AnaliseProva.model_validate(_normalize_prova_dict(parsed))
+                return model_cls.model_validate(parsed)
+        except Exception:
+            pass
+
+        fallback = _fallback_from_text(content, model_cls)
+        if fallback:
+            return fallback
+
     _raise_agent_http_error(content, context)
 
 
@@ -293,14 +423,14 @@ class _UploadShim:
         return self._content
 
 
-async def _read_text_or_file(texto: Optional[str], arquivo: Optional[UploadFile]) -> str:
+async def _read_text_or_file(texto: Optional[str], arquivo: Optional[UploadFile], max_paginas: Optional[int] = None) -> str:
     if texto and texto.strip():
         return texto.strip()
     if arquivo is None:
         raise HTTPException(status_code=400, detail="Informe texto ou envie arquivo")
     content = await arquivo.read()
     shim = _UploadShim(arquivo.filename or "arquivo", content)
-    return extrair_texto_arquivo(shim)
+    return extrair_texto_arquivo(shim, max_paginas=max_paginas)
 
 
 def _estimar_total_questoes(texto: str) -> int:
@@ -435,7 +565,7 @@ async def analyze_prova(
     # #region debug-point C:analyze-prova-entry
     _debug_report("C", "backend/main.py:analyze_prova:entry", "[DEBUG] analyze-prova-entry", {"texto_len": len((texto or "").strip()), "arquivo_nome": arquivo.filename if arquivo else None})
     # #endregion
-    conteudo = await _read_text_or_file(texto, arquivo)
+    conteudo = await _read_text_or_file(texto, arquivo, max_paginas=5)
     # #region debug-point C:analyze-prova-content
     _debug_report("C", "backend/main.py:analyze_prova:content", "[DEBUG] analyze-prova-content", {"conteudo_len": len(conteudo)})
     # #endregion
@@ -458,7 +588,7 @@ async def analyze_prova_figures(
     figuras = _extract_figuras_pdf(pdf_bytes, max_figuras=30)
 
     shim = _UploadShim(arquivo.filename or "prova.pdf", pdf_bytes)
-    texto = extrair_texto_arquivo(shim)
+    texto = extrair_texto_arquivo(shim, max_paginas=5)
     total_questoes = _estimar_total_questoes(texto)
     total_figuras = len(figuras)
     ratio = 0.0
