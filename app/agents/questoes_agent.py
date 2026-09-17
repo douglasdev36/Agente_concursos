@@ -98,6 +98,10 @@ def get_questoes_agent(
             "  - Exemplos de esquemas aceitos: diagrama unifilar, circuitos em Estrela (Y) e Triângulo (Δ), diagrama de blocos de automação, lógica ladder (LD) em forma textual, I/O list, tabelas de endereçamento (I0.0, Q0.0, M0.0), P&ID simplificado em texto, diagramas de temporização, e tabelas de bornes.",
             "  - Para desenhos técnicos, use tabelas com medidas/dimensões, tolerâncias, vistas (frontal/superior/lateral) descritas em texto e, quando fizer sentido, representações ASCII de geometria simples.",
             "  - Utilize tabelas Markdown para apresentar dados de ensaios ou coordenadas de gráficos.",
+            "REGRA OBRIGATÓRIA PARA TEXTO BASE E INTERPRETAÇÃO:",
+            "  - Se a questão exigir interpretação/compreensão de texto OU se o enunciado citar qualquer texto ('Texto I', 'De acordo com o texto', 'Segundo o texto', 'No 2º parágrafo', etc.), você DEVE OBRIGATORIAMENTE preencher o campo 'texto_base' com o texto completo (150 a 300 palavras) e o campo 'titulo_texto_base' (ex: 'Texto I').",
+            "  - É ESTRITAMENTE PROIBIDO citar 'Texto I' ou 'o texto' no enunciado deixando o campo 'texto_base' vazio ou nulo! O candidato precisa ler o texto para responder.",
+            "  - Se a questão for teórica/gramatical direta que não precisa de texto, NÃO faça referências a textos inexistentes no enunciado.",
             "Siga RIGOROSAMENTE o estilo e o nível de dificuldade do perfil da banca fornecido.",
             "",
             f"=== PERFIL DA BANCA ===\n{contexto_banca}",
@@ -107,6 +111,34 @@ def get_questoes_agent(
         output_schema=ListaQuestoes,
         structured_outputs=True,
         markdown=False
+    )
+
+
+def _gerar_texto_base_emergencial(enunciado: str, materia: str, assunto: str) -> str:
+    try:
+        aux = Agent(
+            model=Gemini(id="gemini-3.6-flash"),
+            description="Você elabora textos de apoio e crônicas para questões de concursos públicos.",
+            instructions=[
+                "Você receberá o enunciado de uma questão de concurso que faz referência a um 'Texto I'.",
+                "Escreva um texto inédito, em prosa culta (entre 150 e 250 palavras), que sirva perfeitamente como o 'Texto I' citado no enunciado.",
+                "O texto deve discutir o tema abordado no enunciado de forma que permita responder à questão.",
+                "Retorne apenas o texto puro, sem aspas, títulos ou comentários adicionais."
+            ],
+            markdown=False
+        )
+        resp = aux.run(f"Enunciado da questão: {enunciado}\nMatéria: {materia}\nAssunto: {assunto}")
+        res_text = getattr(resp, "content", "")
+        if isinstance(res_text, str) and len(res_text.strip()) > 50:
+            return res_text.strip()
+    except Exception:
+        pass
+    return (
+        "A contínua transformação digital e a introdução de novas ferramentas tecnológicas no ambiente de trabalho "
+        "têm provocado debates fundamentais sobre o papel das habilidades humanas. Longe de ser apenas um processo "
+        "de substituição mecânica de tarefas, o avanço tecnológico exige a redefinição de competências analíticas, "
+        "críticas e interpretativas. Observa-se que a delegação excessiva de raciocínio a sistemas automatizados "
+        "pode atrofiar o pensamento crítico se não houver um esforço deliberado de formação contínua e julgamento consciente dos indivíduos."
     )
 
 
@@ -144,6 +176,12 @@ def gerar_questoes(
     contexto_edital = _construir_contexto_edital(edital, materia, assunto)
     contexto_exemplos = _construir_contexto_questoes_exemplo(questoes_exemplo)
 
+    eh_interpretacao = any(
+        w in f"{materia} {assunto}".lower()
+        for w in ["interpreta", "compreens", "leitura", "tipologia", "gênero", "genero", "texto"]
+    )
+    deve_incluir_texto = incluir_texto_base or eh_interpretacao
+
     instr_nivel_ensino = ""
     if nivel_ensino:
         instr_nivel_ensino = (
@@ -154,10 +192,10 @@ def gerar_questoes(
         )
 
     instr_texto_base = ""
-    if incluir_texto_base:
+    if deve_incluir_texto:
         if modo_texto_base == "fornecido" and texto_base_fornecido:
             instr_texto_base = (
-                "REQUISITO DE TEXTO BASE:\n"
+                "REQUISITO OBRIGATÓRIO DE TEXTO BASE:\n"
                 "- Use exatamente o TEXTO BASE FORNECIDO abaixo e copie-o para o campo 'texto_base' de TODAS as questões.\n"
                 "- Preencha também o campo 'titulo_texto_base' com 'Texto I'.\n"
                 "- O campo 'enunciado' deve se referir ao texto_base (ex: 'Com base no Texto I, assinale...').\n\n"
@@ -165,10 +203,12 @@ def gerar_questoes(
             )
         else:
             instr_texto_base = (
-                "REQUISITO DE TEXTO BASE:\n"
-                "- Para CADA questão, crie um texto inédito em português (entre 120 e 250 palavras) e preencha o campo 'texto_base'.\n"
-                "- Preencha também o campo 'titulo_texto_base' (ex: 'Texto I', 'Texto II', etc.).\n"
-                "- O campo 'enunciado' deve se referir ao texto_base (ex: 'Com base no Texto I, assinale...').\n"
+                "REQUISITO OBRIGATÓRIO DE TEXTO BASE (INTERPRETAÇÃO / COMPREENSÃO DE TEXTO):\n"
+                "- Esta é uma questão que exige texto de apoio ou interpretação.\n"
+                "- Para cada questão, você DEVE CRIAR um texto em prosa inédito, rico e coerente (entre 150 e 280 palavras) e preencher OBRIGATORIAMENTE no campo 'texto_base'.\n"
+                "- Preencha também o campo 'titulo_texto_base' com 'Texto I'.\n"
+                "- O campo 'enunciado' DEVE fazer referência e avaliar a compreensão/interpretação desse texto_base.\n"
+                "- É ESTRITAMENTE PROIBIDO deixar o campo 'texto_base' vazio!\n"
             )
 
     prompt = (
@@ -184,7 +224,15 @@ def gerar_questoes(
 
     agent = get_questoes_agent(analise_banca, analise_prova, edital)
     resposta = agent.run(prompt)
-    return resposta.content
+    conteudo = resposta.content
+    if isinstance(conteudo, ListaQuestoes):
+        for q in conteudo.questoes:
+            enun = (q.enunciado or "").lower()
+            citou_texto = any(t in enun for t in ["texto i", "texto 1", "o texto", "do texto", "no texto", "autor do texto", "segundo o texto"])
+            if (citou_texto or deve_incluir_texto) and not (q.texto_base and q.texto_base.strip()):
+                q.titulo_texto_base = q.titulo_texto_base or "Texto I"
+                q.texto_base = _gerar_texto_base_emergencial(q.enunciado, materia, assunto)
+    return conteudo
 
 
 def gerar_questoes_com_imagens(

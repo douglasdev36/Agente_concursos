@@ -216,43 +216,44 @@ export default function ConfigPage() {
 
   async function gerarParaMateria(materiaNome: string, assuntos: Array<{ nome: string }>, total: number): Promise<Questao[]> {
     const calls: Array<Promise<ListaQuestoes>> = [];
-    if (!assuntos.length) {
-      calls.push(
-        generateQuestions({
-          materia: materiaNome,
-          assunto: "Geral",
-          quantidade: total,
-          dificuldade: simDificuldade,
-          nivel_ensino: null,
-          num_alternativas: simAlternativas,
-          incluir_texto_base: false,
-          analise_banca: resultBanca,
-          analise_prova: resultProva,
-          edital: resultEdital
-        })
-      );
-    } else {
-      const base = Math.floor(total / assuntos.length);
-      const rem = total % assuntos.length;
-      for (let i = 0; i < assuntos.length; i++) {
-        const qtd = base + (i < rem ? 1 : 0);
-        if (qtd <= 0) continue;
+      const isInterpretacao = (m: string, a: string) => /interpreta|compreens|texto|leitura/i.test(`${m} ${a}`);
+      if (!assuntos.length) {
         calls.push(
           generateQuestions({
             materia: materiaNome,
-            assunto: assuntos[i].nome,
-            quantidade: qtd,
+            assunto: "Geral",
+            quantidade: total,
             dificuldade: simDificuldade,
             nivel_ensino: null,
             num_alternativas: simAlternativas,
-            incluir_texto_base: false,
+            incluir_texto_base: isInterpretacao(materiaNome, "Geral"),
             analise_banca: resultBanca,
             analise_prova: resultProva,
             edital: resultEdital
           })
         );
+      } else {
+        const base = Math.floor(total / assuntos.length);
+        const rem = total % assuntos.length;
+        for (let i = 0; i < assuntos.length; i++) {
+          const qtd = base + (i < rem ? 1 : 0);
+          if (qtd <= 0) continue;
+          calls.push(
+            generateQuestions({
+              materia: materiaNome,
+              assunto: assuntos[i].nome,
+              quantidade: qtd,
+              dificuldade: simDificuldade,
+              nivel_ensino: null,
+              num_alternativas: simAlternativas,
+              incluir_texto_base: isInterpretacao(materiaNome, assuntos[i].nome),
+              analise_banca: resultBanca,
+              analise_prova: resultProva,
+              edital: resultEdital
+            })
+          );
+        }
       }
-    }
 
     const results = await Promise.all(calls);
     const flat = results.flatMap((r) => r.questoes || []);
@@ -341,6 +342,7 @@ export default function ConfigPage() {
 
           const restante = j.quantidade - qtdImg;
           if (restante > 0) {
+            const isInterpEsp = /interpreta|compreens|texto|leitura/i.test(`${j.materia} ${j.assunto}`);
             const lista = await generateQuestions({
               materia: j.materia,
               assunto: j.assunto,
@@ -348,7 +350,7 @@ export default function ConfigPage() {
               dificuldade: simDificuldade,
               nivel_ensino: null,
               num_alternativas: simAlternativas,
-              incluir_texto_base: false,
+              incluir_texto_base: isInterpEsp,
               analise_banca: resultBanca,
               analise_prova: resultProva,
               edital: resultEdital

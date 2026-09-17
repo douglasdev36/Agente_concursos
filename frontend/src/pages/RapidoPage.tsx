@@ -49,6 +49,9 @@ export default function RapidoPage() {
   const [imagens, setImagens] = useState<File[]>([]);
   const [qtdImagens, setQtdImagens] = useState(0);
 
+  const [usarTextoBase, setUsarTextoBase] = useState(false);
+  const [textoBaseFornecido, setTextoBaseFornecido] = useState("");
+
   const [enunciadosRaw, setEnunciadosRaw] = useState("");
   const enunciados = useMemo(() => splitEnunciados(enunciadosRaw), [enunciadosRaw]);
 
@@ -87,6 +90,8 @@ export default function RapidoPage() {
 
         await addBloco(`⚡ Rápido (imagem) | ${materia} | ${assunto}`, `${dificuldade} • ${nivel}`, lista, figurasPatch);
       } else {
+        const isInterpretacao = /interpreta|compreens|texto|leitura/i.test(`${materia} ${assunto}`);
+        const deveTextoBase = usarTextoBase || isInterpretacao;
         const lista = await generateQuestions({
           materia,
           assunto,
@@ -94,7 +99,9 @@ export default function RapidoPage() {
           dificuldade,
           nivel_ensino: nivel,
           num_alternativas: alts,
-          incluir_texto_base: false,
+          incluir_texto_base: deveTextoBase,
+          modo_texto_base: usarTextoBase && textoBaseFornecido.trim() ? "fornecido" : "gerar",
+          texto_base_fornecido: usarTextoBase && textoBaseFornecido.trim() ? textoBaseFornecido.trim() : undefined,
           questoes_exemplo,
           analise_banca: null,
           analise_prova: null,
@@ -232,6 +239,24 @@ export default function RapidoPage() {
                     onChange={(e) => setQtdImagens(Number(e.target.value))}
                     min={0}
                     max={imagens.length}
+                  />
+                </div>
+              ) : null}
+            </div>
+            <div className="col">
+              <label>
+                <input type="checkbox" checked={usarTextoBase} onChange={(e) => setUsarTextoBase(e.target.checked)} /> Incluir texto base (interpretação)
+              </label>
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                Se o assunto for de interpretação, o texto base é gerado automaticamente mesmo desmarcado.
+              </div>
+              {usarTextoBase ? (
+                <div style={{ marginTop: 10 }}>
+                  <textarea
+                    placeholder="Cole aqui o texto base desejado (opcional). Se deixar em branco, a IA criará um texto inédito automaticamente."
+                    value={textoBaseFornecido}
+                    onChange={(e) => setTextoBaseFornecido(e.target.value)}
+                    rows={4}
                   />
                 </div>
               ) : null}
